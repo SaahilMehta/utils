@@ -41,9 +41,10 @@ py -m unittest discover -s . -p "test_*.py"
 ```
 
 The tests cover Modrinth version filtering and caching, installed-version
-comparison, and Minecraft version detection from server JARs. API requests are
-mocked, and temporary files are used, so the tests do not require internet
-access or a Minecraft server.
+comparison, Minecraft version detection from server JARs, server-process
+detection, and safe update installation. API requests are mocked, and
+temporary files are used, so the tests do not require internet access or a
+Minecraft server.
 
 ## Run
 
@@ -69,6 +70,27 @@ files in that destination are not overwritten:
 py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download
 ```
 
+To download and install available updates directly into the server's `mods`
+folder, use `--install`:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --install
+```
+
+Installation is blocked while a Minecraft server process is detected. The
+checker verifies this before downloading and again immediately before
+installation; if it cannot inspect running processes, installation stops.
+Stop the server before running this option. Existing mod files being replaced
+are moved to a uniquely named sibling backup folder (for example,
+`mods_backup_a1b2c3d4`) before downloaded updates are moved into `mods`.
+Unchanged mods are left in place. `--install` also downloads updates, and
+accepts `--download-dir` if you want to choose a different staging folder:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --install `
+  --download-dir "C:\Minecraft\FabricServer\pending-mod-updates"
+```
+
 The checker filters releases to the server's Minecraft version. It tries to
 detect that version from `version.json` in a server JAR directly beside the
 `mods` folder. If detection is unavailable or ambiguous, specify the version
@@ -89,7 +111,8 @@ py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download `
 Only updates reported as available for the target Minecraft version are
 downloaded. For each update, the primary file from the latest compatible Fabric
 version is selected, or the first file if Modrinth does not mark one as primary.
-The original installed mod remains unchanged.
+With `--download`, the original installed mod remains unchanged. With
+`--install`, the replaced original is preserved in the backup folder.
 
 Use `--help` to see the command-line options:
 

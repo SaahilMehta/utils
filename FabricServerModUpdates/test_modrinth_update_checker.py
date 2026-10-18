@@ -3,9 +3,14 @@ import tempfile
 import zipfile
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from modrinth_update_checker import ModrinthUpdateChecker, detect_minecraft_version
+from modrinth_update_checker import (
+    ModrinthUpdateChecker,
+    _is_minecraft_server_command,
+    detect_minecraft_version,
+    install_downloaded_updates,
+)
 
 
 class GetLatestVersionTests(TestCase):
@@ -164,3 +169,160 @@ class DetectMinecraftVersionTests(TestCase):
                     archive.writestr("version.json", json.dumps({"id": version}))
 
             self.assertIsNone(detect_minecraft_version(server_dir))
+
+
+class MinecraftServerProcessTests(TestCase):
+    def test_recognizes_common_server_launch_commands(self):
+        self.assertTrue(
+            _is_minecraft_server_command(
+                "java -Xmx4G -jar C:\\Minecraft\\fabric-server-launch.jar nogui"
+            )
+        )
+        self.assertTrue(
+            _is_minecraft_server_command(
+                "java net.minecraft.server.Main --nogui"
+            )
+        )
+
+    def test_does_not_treat_a_client_process_as_a_server(self):
+        self.assertFalse(
+            _is_minecraft_server_command(
+                "java -cp minecraft-client.jar net.minecraft.client.main.Main"
+            )
+        )
+
+    def test_recognizes_server_jar_names_from_the_server_directory(self):
+        self.assertTrue(
+            _is_minecraft_server_command(
+                "java -Xmx4G -jar C:\\Minecraft\\custom-launcher.jar",
+                {"custom-launcher.jar"},
+            )
+        )
+
+
+class InstallDownloadedUpdatesTests(TestCase):
+    @staticmethod
+    def _write_mod(path: Path, mod_id: str, version: str) -> None:
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(
+                "fabric.mod.json",
+                json.dumps({"id": mod_id, "version": version}),
+            )
+
+    def test_backs_up_replaced_mod_and_keeps_unrelated_mods(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            server_dir = Path(temporary_directory)
+            mods_folder = server_dir / "mods"
+            download_dir = server_dir / "mods_updates"
+            mods_folder.mkdir()
+            download_dir.mkdir()
+            old_mod = mods_folder / "example-1.0.jar"
+            untouched_mod = mods_folder / "unrelated.jar"
+            downloaded_mod = download_dir / "example-2.0.jar"
+            self._write_mod(old_mod, "example", "1.0")
+            untouched_mod.write_bytes(b"untouched")
+            self._write_mod(downloaded_mod, "example", "2.0")
+            old_contents = old_mod.read_bytes()
+
+            with patch(
+                "modrinth_update_checker.is_minecraft_server_running",
+                return_value=False,
+            ):
+                install_downloaded_updates(
+                    ModrinthUpdateChecker(),
+                    mods_folder,
+                    download_dir,
+                    {
+                        "example-1.0.jar": {
+                            "status": "update_available",
+                            "latest": "2.0",
+                            "download_filename": "example-2.0.jar",
+                        }
+                    },
+                    "1.21.4",
+                )
+
+            self.assertFalse(old_mod.exists())
+            self.assertEqual(untouched_mod.read_bytes(), b"untouched")
+            self.assertTrue((mods_folder / "example-2.0.jar").is_file())
+            self.assertFalse(downloaded_mod.exists())
+            backup_dirs = list(server_dir.glob("mods_backup_*"))
+            self.assertEqual(len(backup_dirs), 1)
+            self.assertEqual(
+                (backup_dirs[0] / "example-1.0.jar").read_bytes(),
+                old_contents,
+            )
+
+    def test_does_not_change_files_when_server_is_running(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            server_dir = Path(temporary_directory)
+            mods_folder = server_dir / "mods"
+            download_dir = server_dir / "mods_updates"
+            mods_folder.mkdir()
+            download_dir.mkdir()
+            old_mod = mods_folder / "example-1.0.jar"
+            downloaded_mod = download_dir / "example-2.0.jar"
+            self._write_mod(old_mod, "example", "1.0")
+            self._write_mod(downloaded_mod, "example", "2.0")
+            old_contents = old_mod.read_bytes()
+            download_contents = downloaded_mod.read_bytes()
+
+            with patch(
+                "modrinth_update_checker.is_minecraft_server_running",
+                side_effect=[False, False, True],
+            ) as process_check:
+                with self.assertRaisesRegex(RuntimeError, "server appears to be running"):
+                    install_downloaded_updates(
+                        ModrinthUpdateChecker(),
+                        mods_folder,
+                        download_dir,
+                        {
+                            "example-1.0.jar": {
+                                "status": "update_available",
+                                "latest": "2.0",
+                                "download_filename": "example-2.0.jar",
+                            }
+                        },
+                        "1.21.4",
+                    )
+
+            self.assertEqual(process_check.call_count, 3)
+            self.assertEqual(old_mod.read_bytes(), old_contents)
+            self.assertEqual(downloaded_mod.read_bytes(), download_contents)
+            self.assertEqual(list(server_dir.glob("mods_backup_*")), [])
+
+    def test_rejects_stale_download_before_moving_any_mods(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            server_dir = Path(temporary_directory)
+            mods_folder = server_dir / "mods"
+            download_dir = server_dir / "mods_updates"
+            mods_folder.mkdir()
+            download_dir.mkdir()
+            old_mod = mods_folder / "example-1.0.jar"
+            downloaded_mod = download_dir / "example-2.0.jar"
+            self._write_mod(old_mod, "example", "1.0")
+            self._write_mod(downloaded_mod, "example", "1.5")
+            old_contents = old_mod.read_bytes()
+
+            with patch(
+                "modrinth_update_checker.is_minecraft_server_running",
+                return_value=False,
+            ):
+                with self.assertRaisesRegex(ValueError, "does not match the expected"):
+                    install_downloaded_updates(
+                        ModrinthUpdateChecker(),
+                        mods_folder,
+                        download_dir,
+                        {
+                            "example-1.0.jar": {
+                                "status": "update_available",
+                                "latest": "2.0",
+                                "download_filename": "example-2.0.jar",
+                            }
+                        },
+                        "1.21.4",
+                    )
+
+            self.assertEqual(old_mod.read_bytes(), old_contents)
+            self.assertTrue(downloaded_mod.is_file())
+            self.assertEqual(list(server_dir.glob("mods_backup_*")), [])
