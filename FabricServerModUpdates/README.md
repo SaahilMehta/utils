@@ -5,9 +5,9 @@ for newer mod versions available on Modrinth. It reads each mod's installed
 version from its `fabric.mod.json` metadata, looks up the corresponding Modrinth
 project, and compares that version with the latest published Fabric version.
 
-The script only reports results: it does not download, install, or replace mods.
-It checks `.jar` and `.zip` files directly inside the folder you provide; it
-does not search subfolders.
+By default, the script only reports results; it does not download, install, or
+replace mods. It checks `.jar` and `.zip` files directly inside the folder you
+provide; it does not search subfolders.
 
 ## Requirements
 
@@ -46,6 +46,26 @@ add `--summary` (or `-s`):
 ```powershell
 py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --summary
 ```
+
+To download available updates without changing the server's `mods` folder, add
+`--download`. Files are saved to a sibling folder named
+`<mods-folder>_updates` by default (for example, `mods_updates`), and existing
+files in that destination are not overwritten:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download
+```
+
+Choose a different destination with `--download-dir`:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download `
+  --download-dir "C:\Minecraft\FabricServer\pending-mod-updates"
+```
+
+Only updates reported as available are downloaded. For each update, the primary
+file from the latest Fabric version is selected, or the first file if Modrinth
+does not mark one as primary. The original installed mod remains unchanged.
 
 Use `--help` to see the command-line options:
 

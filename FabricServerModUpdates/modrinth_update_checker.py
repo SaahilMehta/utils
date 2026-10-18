@@ -11,10 +11,12 @@ import sys
 import json
 import argparse
 import time
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from functools import lru_cache
+from urllib.parse import urlparse
 import requests
 
 
@@ -169,6 +171,37 @@ class ModrinthUpdateChecker:
         self._cache.setdefault(project_id, {})["latest"] = latest
         return latest
 
+    def download_file(self, url: str, destination: Path) -> None:
+        """Download a Modrinth file to a destination without leaving partial files."""
+        parsed_url = urlparse(url)
+        if parsed_url.scheme != "https" or parsed_url.hostname != "cdn.modrinth.com":
+            raise ValueError(f"Unexpected Modrinth download URL: {url}")
+
+        temporary_path = None
+        try:
+            with requests.get(
+                url, stream=True, timeout=(10, 60)
+            ) as response:
+                response.raise_for_status()
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=destination.parent,
+                    prefix=f".{destination.name}.",
+                    suffix=".part",
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = Path(temporary_file.name)
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            temporary_file.write(chunk)
+
+            if temporary_path.stat().st_size == 0:
+                raise ValueError("The downloaded file is empty.")
+            temporary_path.rename(destination)
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
+
     def _read_fabric_metadata(self, file_path: Path) -> Dict[str, Optional[str]]:
         """Read the Fabric mod ID and installed version from a mod archive."""
         try:
@@ -289,15 +322,85 @@ class ModrinthUpdateChecker:
             latest_version = latest.get("version_number")
             status = "up-to-date" if latest_version == current_version else "update_available"
 
-            results[mod["filename"]] = {
+            result = {
                 "status": status,
                 "current": current_version,
                 "latest": latest_version,
                 "project_id": resolved_id,
                 "details": f"{status}: Current={current_version}, Latest={latest_version}"
             }
+            files = latest.get("files")
+            valid_files = [
+                file for file in files
+                if isinstance(file, dict)
+                and isinstance(file.get("filename"), str)
+                and file["filename"]
+                and Path(file["filename"]).name == file["filename"]
+                and "/" not in file["filename"]
+                and "\\" not in file["filename"]
+                and isinstance(file.get("url"), str)
+            ] if isinstance(files, list) else []
+            if valid_files:
+                download_file = next(
+                    (file for file in valid_files if file.get("primary") is True),
+                    valid_files[0],
+                )
+                result["download_filename"] = download_file["filename"]
+                result["download_url"] = download_file["url"]
+            results[mod["filename"]] = result
 
         return results
+
+
+def download_updates(
+    checker: ModrinthUpdateChecker,
+    results: Dict[str, Dict],
+    download_dir: Path,
+) -> None:
+    """Download available updates into a directory separate from the mods folder."""
+    updates = [
+        (filename, data)
+        for filename, data in results.items()
+        if data.get("status") == "update_available"
+    ]
+    if not updates:
+        print("[INFO] No available updates to download.")
+        return
+
+    try:
+        download_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        print(f"[ERROR] Could not create download directory '{download_dir}': {error}")
+        return
+
+    for installed_filename, data in updates:
+        download_filename = data.get("download_filename")
+        download_url = data.get("download_url")
+        if (
+            not isinstance(download_filename, str)
+            or not download_filename
+            or Path(download_filename).name != download_filename
+            or "/" in download_filename
+            or "\\" in download_filename
+            or not isinstance(download_url, str)
+        ):
+            print(
+                f"[ERROR] No valid download file was provided for '{installed_filename}'."
+            )
+            continue
+
+        destination = download_dir / download_filename
+        if destination.exists():
+            print(
+                f"[SKIP] '{destination}' already exists; it was not overwritten."
+            )
+            continue
+
+        try:
+            checker.download_file(download_url, destination)
+            print(f"[DOWNLOADED] {installed_filename} -> {destination}")
+        except (requests.exceptions.RequestException, OSError, ValueError) as error:
+            print(f"[ERROR] Could not download update for '{installed_filename}': {error}")
 
 
 def print_results(results: Dict[str, Dict], summary_only: bool = False):
@@ -352,18 +455,36 @@ def main():
     parser.add_argument("mods_folder", nargs="?", default=None, help="Path to the 'mods' folder.")
     parser.add_argument("-t", "--token", help="Modrinth API token (optional).")
     parser.add_argument("-s", "--summary", action="store_true", help="Show only a summary report.")
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Download available updates to a separate folder (default: sibling '<mods-folder>_updates').",
+    )
+    parser.add_argument(
+        "--download-dir",
+        type=Path,
+        help="Destination folder for downloaded updates; requires --download.",
+    )
 
     args = parser.parse_args()
+
+    if args.download_dir and not args.download:
+        parser.error("--download-dir requires --download.")
 
     if not args.mods_folder:
         print("[ERROR] Please specify the mods folder path.")
         sys.exit(1)
 
-    # Token is optional for read-only operations like this
     checker = ModrinthUpdateChecker(api_token=args.token)
-    mods = checker.scan_mods_folder(Path(args.mods_folder))
+    mods_folder = Path(args.mods_folder)
+    mods = checker.scan_mods_folder(mods_folder)
     results = checker.check_for_updates(mods)
     print_results(results, summary_only=args.summary)
+    if args.download:
+        download_dir = args.download_dir or (
+            mods_folder.resolve().parent / f"{mods_folder.name}_updates"
+        )
+        download_updates(checker, results, download_dir)
 
 
 if __name__ == "__main__":
