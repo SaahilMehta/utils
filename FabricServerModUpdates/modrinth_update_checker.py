@@ -6,9 +6,11 @@ No authentication required for read-only operations like this.
 """
 
 
+from importlib.metadata import metadata
 import os
 import sys
 import json
+import re
 import argparse
 import time
 import tempfile
@@ -24,6 +26,65 @@ MODRINTH_PROJECT_ID_OVERRIDES = {
     "treeharvester": "abooMhox",
 }
 
+MODRINTH_LOADER_LABELS = {"fabric", "forge", "neoforge", "neo", "quilt"}
+
+
+def _versions_match(
+    installed_version: str, published_version: str, minecraft_version: str
+) -> bool:
+    """Compare mod versions while ignoring Minecraft and loader labels."""
+    if installed_version.casefold() == published_version.casefold():
+        return True
+
+    minecraft_version = minecraft_version.casefold()
+    minecraft_labels = {
+        minecraft_version,
+        f"mc{minecraft_version}",
+        f"{minecraft_version}.0",
+        f"mc{minecraft_version}.0",
+    }
+
+    def version_components(version: str) -> tuple[str, ...]:
+        return tuple(
+            component
+            for component in re.split(r"[-+]", version.casefold())
+            if component
+            and component not in MODRINTH_LOADER_LABELS
+            and component not in minecraft_labels
+        )
+
+    installed_components = version_components(installed_version)
+    published_components = version_components(published_version)
+    return bool(installed_components) and installed_components == published_components
+
+
+def detect_minecraft_version(server_dir: Path) -> Optional[str]:
+    """Read the Minecraft version from server JARs in the directory."""
+    versions = set()
+    for server_jar in server_dir.glob("*.jar"):
+        try:
+            with zipfile.ZipFile(server_jar) as archive:
+                metadata = json.loads(archive.read("version.json"))
+        except KeyError:
+            continue
+        except (OSError, zipfile.BadZipFile):
+            continue
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            print(f"[WARN] Could not read version metadata from '{server_jar.name}': {error}")
+            continue
+
+        if isinstance(metadata, dict):
+            version = metadata.get("id")
+            if isinstance(version, str) and version:
+                versions.add(version)
+
+    if len(versions) > 1:
+        print(
+            f"[WARN] Found multiple Minecraft versions in server JARs under "
+            f"'{server_dir}': {', '.join(sorted(versions))}."
+        )
+        return None
+    return next(iter(versions), None)
 
 
 class ModrinthUpdateChecker:
@@ -152,23 +213,51 @@ class ModrinthUpdateChecker:
         self._cache[project_id] = data
         return data
 
-    def get_latest_version(self, project_id: str) -> Optional[Dict]:
-        """Fetch the latest version of a mod from Modrinth API."""
+    def get_latest_version(
+        self, project_id: str, minecraft_version: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Fetch the latest Fabric version compatible with Minecraft."""
+        if not minecraft_version:
+            print("[WARN] A Minecraft version is required to select compatible versions.")
+            return None
+
+        cache_key = f"latest:{minecraft_version}"
         # Check cache first
-        if project_id in self._cache and "latest" in self._cache[project_id]:
-            return self._cache[project_id]["latest"]
+        if project_id in self._cache and cache_key in self._cache[project_id]:
+            return self._cache[project_id][cache_key]
 
         versions, status = self._request(
             f"/project/{project_id}/version",
-            {"loaders": json.dumps(["fabric"])},
+            {
+                "loaders": json.dumps(["fabric"]),
+                "game_versions": json.dumps([minecraft_version]),
+            },
         )
         if not isinstance(versions, list) or not versions or status >= 400:
             print(f"[WARN] No versions found for project '{project_id}'")
             return None
 
-        latest = max(versions, key=lambda version: version.get("date_published", ""))
-        # Cache the latest version info
-        self._cache.setdefault(project_id, {})["latest"] = latest
+        compatible_versions = [
+            version
+            for version in versions
+            if isinstance(version, dict)
+            and isinstance(version.get("game_versions"), list)
+            and minecraft_version in version["game_versions"]
+            and isinstance(version.get("loaders"), list)
+            and "fabric" in version["loaders"]
+        ]
+        if not compatible_versions:
+            print(
+                f"[WARN] No Fabric versions found for project '{project_id}' "
+                f"and Minecraft {minecraft_version}"
+            )
+            return None
+
+        latest = max(
+            compatible_versions,
+            key=lambda version: version.get("date_published", ""),
+        )
+        self._cache.setdefault(project_id, {})[cache_key] = latest
         return latest
 
     def download_file(self, url: str, destination: Path) -> None:
@@ -273,11 +362,24 @@ class ModrinthUpdateChecker:
             print("[WARN] No .jar/.zip files were found in the specified mods folder.")
         return mods
 
-    def check_for_updates(self, mods: List[Dict]) -> Dict[str, Dict]:
+    def check_for_updates(
+        self, mods: List[Dict], minecraft_version: Optional[str] = None
+    ) -> Dict[str, Dict]:
         """Check each mod for available updates on Modrinth."""
         results = {}
         for mod in mods:
             if not mod["mod_id"]:
+                continue
+
+            if not minecraft_version:
+                results[mod["filename"]] = {
+                    "status": "unknown",
+                    "current": mod.get("current_version"),
+                    "details": (
+                        "Could not determine the Minecraft version. "
+                        "Specify --minecraft-version to check compatible releases."
+                    ),
+                }
                 continue
 
             print(f"[CHECK] {mod['filename']} (ID: {mod['mod_id']})")
@@ -302,13 +404,15 @@ class ModrinthUpdateChecker:
                 continue
 
             current_version = mod.get("current_version")
-            latest = self.get_latest_version(resolved_id)
+            latest = self.get_latest_version(resolved_id, minecraft_version)
 
             if not latest:
                 results[mod["filename"]] = {
                     "status": "no_versions",
                     "current": current_version,
-                    "details": "No versions found on Modrinth"
+                    "details": (
+                        f"No Fabric versions found for Minecraft {minecraft_version}"
+                    ),
                 }
                 continue
 
@@ -320,7 +424,19 @@ class ModrinthUpdateChecker:
                 continue
 
             latest_version = latest.get("version_number")
-            status = "up-to-date" if latest_version == current_version else "update_available"
+            if not isinstance(latest_version, str) or not latest_version:
+                results[mod["filename"]] = {
+                    "status": "unknown",
+                    "current": current_version,
+                    "details": "Could not read the published version from Modrinth",
+                }
+                continue
+
+            status = (
+                "up-to-date"
+                if _versions_match(current_version, latest_version, minecraft_version)
+                else "update_available"
+            )
 
             result = {
                 "status": status,
@@ -453,6 +569,13 @@ def main():
         description="Check Minecraft Fabric mods for updates via Modrinth API."
     )
     parser.add_argument("mods_folder", nargs="?", default=None, help="Path to the 'mods' folder.")
+    parser.add_argument(
+        "--minecraft-version",
+        help=(
+            "Minecraft version to target. If omitted, the checker tries to read "
+            "version.json from a server JAR beside the mods folder."
+        ),
+    )
     parser.add_argument("-t", "--token", help="Modrinth API token (optional).")
     parser.add_argument("-s", "--summary", action="store_true", help="Show only a summary report.")
     parser.add_argument(
@@ -475,10 +598,26 @@ def main():
         print("[ERROR] Please specify the mods folder path.")
         sys.exit(1)
 
+    minecraft_version = (
+        args.minecraft_version.strip() if args.minecraft_version else None
+    )
+    if args.minecraft_version is not None and not minecraft_version:
+        parser.error("--minecraft-version must not be empty.")
+
     checker = ModrinthUpdateChecker(api_token=args.token)
     mods_folder = Path(args.mods_folder)
+    if not minecraft_version:
+        minecraft_version = detect_minecraft_version(mods_folder.parent)
+    if minecraft_version:
+        print(f"[INFO] Checking for Minecraft {minecraft_version} compatible versions.")
+    else:
+        print(
+            "[WARN] Could not determine the Minecraft version. "
+            "No updates will be reported or downloaded; use --minecraft-version."
+        )
+
     mods = checker.scan_mods_folder(mods_folder)
-    results = checker.check_for_updates(mods)
+    results = checker.check_for_updates(mods, minecraft_version)
     print_results(results, summary_only=args.summary)
     if args.download:
         download_dir = args.download_dir or (

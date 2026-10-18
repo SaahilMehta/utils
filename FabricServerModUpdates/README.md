@@ -56,6 +56,16 @@ files in that destination are not overwritten:
 py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download
 ```
 
+The checker filters releases to the server's Minecraft version. It tries to
+detect that version from `version.json` in a server JAR directly beside the
+`mods` folder. If detection is unavailable or ambiguous, specify the version
+explicitly; without a known version, updates are not reported or downloaded:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" `
+  --minecraft-version 1.21.4 --download
+```
+
 Choose a different destination with `--download-dir`:
 
 ```powershell
@@ -63,9 +73,10 @@ py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download `
   --download-dir "C:\Minecraft\FabricServer\pending-mod-updates"
 ```
 
-Only updates reported as available are downloaded. For each update, the primary
-file from the latest Fabric version is selected, or the first file if Modrinth
-does not mark one as primary. The original installed mod remains unchanged.
+Only updates reported as available for the target Minecraft version are
+downloaded. For each update, the primary file from the latest compatible Fabric
+version is selected, or the first file if Modrinth does not mark one as primary.
+The original installed mod remains unchanged.
 
 Use `--help` to see the command-line options:
 
@@ -81,11 +92,14 @@ tries the first part of the filename before a hyphen (for example,
 `examplemod-1.2.0.jar` gives the candidate ID `examplemod`). It then resolves
 that candidate to a Modrinth mod project, using the metadata name as a search
 hint where available. One project ID override is currently configured for
-`treeharvester`.
+`treeharvester`. Modrinth versions are filtered by both the target Minecraft
+version and the Fabric loader.
 
 The installed version must be present in `fabric.mod.json` for the checker to
 compare versions. Project lookup requires a matching Modrinth mod project, and
-only Fabric versions are considered.
+only Fabric versions are considered. When comparing versions, the checker
+ignores the selected Minecraft version and known loader labels that Modrinth may
+include in its published version string.
 
 ## Authentication and rate limits
 
