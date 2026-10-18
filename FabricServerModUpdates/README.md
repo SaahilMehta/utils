@@ -32,6 +32,19 @@ On macOS or Linux, activate the virtual environment with:
 source .venv/bin/activate
 ```
 
+## Tests
+
+After installing the requirements, run the unit tests from this directory:
+
+```powershell
+py -m unittest discover -s . -p "test_*.py"
+```
+
+The tests cover Modrinth version filtering and caching, installed-version
+comparison, and Minecraft version detection from server JARs. API requests are
+mocked, and temporary files are used, so the tests do not require internet
+access or a Minecraft server.
+
 ## Run
 
 Pass the path to the server's `mods` folder:
