@@ -15,6 +15,14 @@ provide; it does not search subfolders.
 - Packages listed in [`requirements.txt`](requirements.txt)
 - Internet access to query the Modrinth API
 
+## Project files
+
+- `modrinth_update_checker.py` provides the command-line interface, workflow,
+  and results report.
+- `modrinth.py` handles Modrinth API requests, mod scanning, and version checks.
+- `update_operations.py` handles server-process checks, downloads, and safe
+  installation with backups.
+
 ## Install
 
 From this directory, create and activate a virtual environment if desired, then

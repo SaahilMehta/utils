@@ -5,10 +5,12 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from modrinth_update_checker import (
+from modrinth import (
     ModrinthUpdateChecker,
-    _is_minecraft_server_command,
     detect_minecraft_version,
+)
+from update_operations import (
+    _is_minecraft_server_command,
     install_downloaded_updates,
 )
 
@@ -225,7 +227,7 @@ class InstallDownloadedUpdatesTests(TestCase):
             old_contents = old_mod.read_bytes()
 
             with patch(
-                "modrinth_update_checker.is_minecraft_server_running",
+                "update_operations.is_minecraft_server_running",
                 return_value=False,
             ):
                 install_downloaded_updates(
@@ -268,7 +270,7 @@ class InstallDownloadedUpdatesTests(TestCase):
             download_contents = downloaded_mod.read_bytes()
 
             with patch(
-                "modrinth_update_checker.is_minecraft_server_running",
+                "update_operations.is_minecraft_server_running",
                 side_effect=[False, False, True],
             ) as process_check:
                 with self.assertRaisesRegex(RuntimeError, "server appears to be running"):
@@ -305,7 +307,7 @@ class InstallDownloadedUpdatesTests(TestCase):
             old_contents = old_mod.read_bytes()
 
             with patch(
-                "modrinth_update_checker.is_minecraft_server_running",
+                "update_operations.is_minecraft_server_running",
                 return_value=False,
             ):
                 with self.assertRaisesRegex(ValueError, "does not match the expected"):
