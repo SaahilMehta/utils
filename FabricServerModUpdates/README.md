@@ -72,17 +72,34 @@ py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --summary
 To download available updates without changing the server's `mods` folder, add
 `--download`. Files are saved to a sibling folder named
 `<mods-folder>_updates` by default (for example, `mods_updates`), and existing
-files in that destination are not overwritten:
+files in that destination are not overwritten. The checker asks for approval
+before downloading; explicitly enter `y`/`yes` or `n`/`no` to proceed or
+decline. Blank or invalid responses prompt again:
 
 ```powershell
 py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download
 ```
 
+Add `--yes` (or `-y`) to approve without a prompt, for example when running the
+checker from a script:
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --download --yes
+```
+
 To download and install available updates directly into the server's `mods`
-folder, use `--install`:
+folder, use `--install`. The checker asks separately before downloading and
+before installing; declining the second prompt leaves downloaded files in the
+staging folder. Each prompt requires an explicit `y`/`yes` or `n`/`no`; blank
+or invalid responses prompt again. Use `--yes` (or `-y`) to approve both steps
+without prompts:
 
 ```powershell
 py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --install
+```
+
+```powershell
+py .\modrinth_update_checker.py "C:\Minecraft\FabricServer\mods" --install --yes
 ```
 
 Installation is blocked while a Minecraft server process is detected. The
