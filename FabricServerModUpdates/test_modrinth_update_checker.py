@@ -164,8 +164,8 @@ class DetectMinecraftVersionTests(TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             server_dir = Path(temporary_directory)
             for filename, version in (
-                ("server.jar", "1.21.4"),
-                ("fabric-server-launch.jar", "1.20.1"),
+                    ("server.jar", "1.21.4"),
+                    ("fabric-server-launch.jar", "1.20.1"),
             ):
                 with zipfile.ZipFile(server_dir / filename, "w") as archive:
                     archive.writestr("version.json", json.dumps({"id": version}))
@@ -227,8 +227,8 @@ class InstallDownloadedUpdatesTests(TestCase):
             old_contents = old_mod.read_bytes()
 
             with patch(
-                "update_operations.is_minecraft_server_running",
-                return_value=False,
+                    "update_operations.is_minecraft_server_running",
+                    return_value=False,
             ):
                 install_downloaded_updates(
                     ModrinthUpdateChecker(),
@@ -270,8 +270,8 @@ class InstallDownloadedUpdatesTests(TestCase):
             download_contents = downloaded_mod.read_bytes()
 
             with patch(
-                "update_operations.is_minecraft_server_running",
-                side_effect=[False, False, True],
+                    "update_operations.is_minecraft_server_running",
+                    side_effect=[False, False, True],
             ) as process_check:
                 with self.assertRaisesRegex(RuntimeError, "server appears to be running"):
                     install_downloaded_updates(
@@ -307,8 +307,8 @@ class InstallDownloadedUpdatesTests(TestCase):
             old_contents = old_mod.read_bytes()
 
             with patch(
-                "update_operations.is_minecraft_server_running",
-                return_value=False,
+                    "update_operations.is_minecraft_server_running",
+                    return_value=False,
             ):
                 with self.assertRaisesRegex(ValueError, "does not match the expected"):
                     install_downloaded_updates(

@@ -15,7 +15,7 @@ from modrinth import ModrinthUpdateChecker, _versions_match
 
 
 def _is_minecraft_server_command(
-    command_line: str, server_jar_names: Optional[set[str]] = None
+        command_line: str, server_jar_names: Optional[set[str]] = None
 ) -> bool:
     """Identify common Fabric and vanilla dedicated-server Java commands."""
     normalized = command_line.casefold().replace("\\", "/")
@@ -99,9 +99,9 @@ def is_minecraft_server_running(server_dir: Optional[Path] = None) -> bool:
 
 
 def download_updates(
-    checker: ModrinthUpdateChecker,
-    results: Dict[str, Dict],
-    download_dir: Path,
+        checker: ModrinthUpdateChecker,
+        results: Dict[str, Dict],
+        download_dir: Path,
 ) -> None:
     """Download available updates into a directory separate from the mods folder."""
     updates = [
@@ -123,12 +123,12 @@ def download_updates(
         download_filename = data.get("download_filename")
         download_url = data.get("download_url")
         if (
-            not isinstance(download_filename, str)
-            or not download_filename
-            or Path(download_filename).name != download_filename
-            or "/" in download_filename
-            or "\\" in download_filename
-            or not isinstance(download_url, str)
+                not isinstance(download_filename, str)
+                or not download_filename
+                or Path(download_filename).name != download_filename
+                or "/" in download_filename
+                or "\\" in download_filename
+                or not isinstance(download_url, str)
         ):
             print(
                 f"[ERROR] No valid download file was provided for '{installed_filename}'."
@@ -150,11 +150,11 @@ def download_updates(
 
 
 def install_downloaded_updates(
-    checker: ModrinthUpdateChecker,
-    mods_folder: Path,
-    download_dir: Path,
-    results: Dict[str, Dict],
-    minecraft_version: str,
+        checker: ModrinthUpdateChecker,
+        mods_folder: Path,
+        download_dir: Path,
+        results: Dict[str, Dict],
+        minecraft_version: str,
 ) -> None:
     """Back up replaced mods, then move downloaded updates into the mods folder."""
     updates = [
@@ -193,18 +193,18 @@ def install_downloaded_updates(
         download_filename = data.get("download_filename")
         latest_version = data.get("latest")
         if (
-            not isinstance(installed_filename, str)
-            or not installed_filename
-            or Path(installed_filename).name != installed_filename
-            or "/" in installed_filename
-            or "\\" in installed_filename
-            or not isinstance(download_filename, str)
-            or not download_filename
-            or Path(download_filename).name != download_filename
-            or "/" in download_filename
-            or "\\" in download_filename
-            or not isinstance(latest_version, str)
-            or not latest_version
+                not isinstance(installed_filename, str)
+                or not installed_filename
+                or Path(installed_filename).name != installed_filename
+                or "/" in installed_filename
+                or "\\" in installed_filename
+                or not isinstance(download_filename, str)
+                or not download_filename
+                or Path(download_filename).name != download_filename
+                or "/" in download_filename
+                or "\\" in download_filename
+                or not isinstance(latest_version, str)
+                or not latest_version
         ):
             raise ValueError(f"Invalid update information for '{installed_filename}'.")
 
@@ -228,7 +228,7 @@ def install_downloaded_updates(
 
         downloaded_version = checker._read_fabric_metadata(download_path).get("version")
         if not downloaded_version or not _versions_match(
-            downloaded_version, latest_version, minecraft_version
+                downloaded_version, latest_version, minecraft_version
         ):
             raise ValueError(
                 f"Downloaded file '{download_path}' does not match the expected "

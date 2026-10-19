@@ -141,7 +141,7 @@ def main():
     print_results(results, summary_only=args.summary)
     if args.download or args.install:
         download_dir = args.download_dir or (
-            mods_folder.resolve().parent / f"{mods_folder.name}_updates"
+                mods_folder.resolve().parent / f"{mods_folder.name}_updates"
         )
         download_updates(checker, results, download_dir)
         if args.install:
