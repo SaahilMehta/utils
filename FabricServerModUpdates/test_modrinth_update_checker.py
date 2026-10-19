@@ -1,10 +1,12 @@
 import json
 import tempfile
 import zipfile
+from contextlib import ExitStack
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import modrinth_update_checker
 from modrinth import (
     ModrinthUpdateChecker,
     detect_minecraft_version,
@@ -200,6 +202,97 @@ class MinecraftServerProcessTests(TestCase):
                 {"custom-launcher.jar"},
             )
         )
+
+
+class UpdateApprovalTests(TestCase):
+    def run_cli(self, options, responses=()):
+        checker = Mock()
+        checker.scan_mods_folder.return_value = []
+        checker.check_for_updates.return_value = {
+            "example-1.0.jar": {
+                "status": "update_available",
+                "current": "1.0",
+                "latest": "2.0",
+            }
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "modrinth_update_checker.ModrinthUpdateChecker",
+                        return_value=checker,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "modrinth_update_checker.detect_minecraft_version",
+                        return_value="1.21.4",
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "modrinth_update_checker.is_minecraft_server_running",
+                        return_value=False,
+                    )
+                )
+                downloads = stack.enter_context(
+                    patch("modrinth_update_checker.download_updates")
+                )
+                installs = stack.enter_context(
+                    patch("modrinth_update_checker.install_downloaded_updates")
+                )
+                prompt = stack.enter_context(
+                    patch("builtins.input", side_effect=responses)
+                )
+                stack.enter_context(
+                    patch(
+                        "sys.argv",
+                        [
+                            "modrinth_update_checker.py",
+                            temporary_directory,
+                            *options,
+                        ],
+                    )
+                )
+                modrinth_update_checker.main()
+
+        return downloads, installs, prompt
+
+    def test_download_is_skipped_when_user_declines(self):
+        downloads, installs, prompt = self.run_cli(["--download"], ["n"])
+
+        downloads.assert_not_called()
+        installs.assert_not_called()
+        prompt.assert_called_once()
+        self.assertIn("download", prompt.call_args.args[0])
+
+    def test_empty_response_reprompts_until_user_answers(self):
+        downloads, _, prompt = self.run_cli(["--download"], ["", "y"])
+
+        downloads.assert_called_once()
+        self.assertEqual(prompt.call_count, 2)
+        self.assertEqual(
+            prompt.call_args_list[0].args[0],
+            prompt.call_args_list[1].args[0],
+        )
+
+    def test_install_requires_separate_download_and_install_approvals(self):
+        downloads, installs, prompt = self.run_cli(
+            ["--install"], ["y", "n"]
+        )
+
+        downloads.assert_called_once()
+        installs.assert_not_called()
+        self.assertEqual(prompt.call_count, 2)
+        self.assertIn("download", prompt.call_args_list[0].args[0])
+        self.assertIn("install", prompt.call_args_list[1].args[0])
+
+    def test_yes_option_bypasses_both_prompts(self):
+        downloads, installs, prompt = self.run_cli(["--install", "-y"])
+
+        downloads.assert_called_once()
+        installs.assert_called_once()
+        prompt.assert_not_called()
 
 
 class InstallDownloadedUpdatesTests(TestCase):

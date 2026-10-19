@@ -63,6 +63,21 @@ def print_results(results: Dict[str, Dict], summary_only: bool = False):
         print(f"  Issues/Unknown:   {len(outdated)}")
 
 
+def confirm_action(action: str) -> bool:
+    """Ask the user to explicitly approve or decline an action."""
+    while True:
+        try:
+            response = input(f"Proceed with {action}? [y/n]: ").strip().casefold()
+        except EOFError:
+            print(f"\n[INFO] No response received; skipping {action}.")
+            return False
+        if response in {"y", "yes"}:
+            return True
+        if response in {"n", "no"}:
+            return False
+        print("[INFO] Please enter 'y' or 'n'.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check Minecraft Fabric mods for updates via Modrinth API."
@@ -90,6 +105,12 @@ def main():
             "a sibling backup folder. Installation is blocked while a Minecraft "
             "server is running."
         ),
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Approve downloads and installation without prompting.",
     )
     parser.add_argument(
         "--download-dir",
@@ -140,13 +161,32 @@ def main():
     results = checker.check_for_updates(mods, minecraft_version)
     print_results(results, summary_only=args.summary)
     if args.download or args.install:
-        download_dir = args.download_dir or (
-                mods_folder.resolve().parent / f"{mods_folder.name}_updates"
+        has_updates = any(
+            data.get("status") == "update_available"
+            for data in results.values()
         )
-        download_updates(checker, results, download_dir)
+        download_dir = args.download_dir or (
+            mods_folder.resolve().parent / f"{mods_folder.name}_updates"
+        )
+        if not has_updates:
+            download_updates(checker, results, download_dir)
+        elif args.yes or confirm_action("download available updates"):
+            download_updates(checker, results, download_dir)
+        else:
+            return
+
         if args.install:
+            if (
+                has_updates
+                and not args.yes
+                and not confirm_action("install downloaded updates")
+            ):
+                return
             if not minecraft_version:
-                print("[ERROR] A Minecraft version is required to validate updates before installation.")
+                print(
+                    "[ERROR] A Minecraft version is required to validate "
+                    "updates before installation."
+                )
                 sys.exit(1)
             try:
                 install_downloaded_updates(
