@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 
 import requests
 
-
 MODRINTH_PROJECT_ID_OVERRIDES = {
     "treeharvester": "abooMhox",
 }
@@ -23,7 +22,7 @@ MODRINTH_LOADER_LABELS = {"fabric", "forge", "neoforge", "neo", "quilt"}
 
 
 def _versions_match(
-    installed_version: str, published_version: str, minecraft_version: str
+        installed_version: str, published_version: str, minecraft_version: str
 ) -> bool:
     """Compare mod versions while ignoring Minecraft and loader labels."""
     if installed_version.casefold() == published_version.casefold():
@@ -94,7 +93,7 @@ class ModrinthUpdateChecker:
         self._cache: Dict[str, Any] = {}
 
     def _request(
-        self, endpoint: str, params: Optional[Dict] = None, retry_rate_limit: bool = True
+            self, endpoint: str, params: Optional[Dict] = None, retry_rate_limit: bool = True
     ) -> tuple:
         """Make API request and return (data, status_code)."""
         url = f"{self.base_url}{endpoint}"
@@ -129,7 +128,7 @@ class ModrinthUpdateChecker:
 
     @lru_cache(maxsize=128)
     def resolve_project_id(
-        self, candidate_id: str, candidate_name: Optional[str] = None
+            self, candidate_id: str, candidate_name: Optional[str] = None
     ) -> Optional[str]:
         """Search for a Modrinth project by name/ID and return its actual project ID."""
         # Try direct lookup first (faster if ID is already valid)
@@ -163,9 +162,10 @@ class ModrinthUpdateChecker:
         hits = [
             hit for hit in results["hits"]
             if isinstance(hit, dict)
-            and hit.get("project_type") == "mod"
-            and isinstance(hit.get("project_id"), str)
+               and hit.get("project_type") == "mod"
+               and isinstance(hit.get("project_id"), str)
         ]
+
         def normalize(value: str) -> str:
             return "".join(
                 character for character in value.casefold() if character.isalnum()
@@ -178,7 +178,7 @@ class ModrinthUpdateChecker:
             (
                 hit for hit in hits
                 if normalize(hit.get("slug", "")) in expected_names
-                or normalize(hit.get("title", "")) in expected_names
+                   or normalize(hit.get("title", "")) in expected_names
             ),
             None,
         )
@@ -207,7 +207,7 @@ class ModrinthUpdateChecker:
         return data
 
     def get_latest_version(
-        self, project_id: str, minecraft_version: Optional[str] = None
+            self, project_id: str, minecraft_version: Optional[str] = None
     ) -> Optional[Dict]:
         """Fetch the latest Fabric version compatible with Minecraft."""
         if not minecraft_version:
@@ -234,10 +234,10 @@ class ModrinthUpdateChecker:
             version
             for version in versions
             if isinstance(version, dict)
-            and isinstance(version.get("game_versions"), list)
-            and minecraft_version in version["game_versions"]
-            and isinstance(version.get("loaders"), list)
-            and "fabric" in version["loaders"]
+               and isinstance(version.get("game_versions"), list)
+               and minecraft_version in version["game_versions"]
+               and isinstance(version.get("loaders"), list)
+               and "fabric" in version["loaders"]
         ]
         if not compatible_versions:
             print(
@@ -262,15 +262,15 @@ class ModrinthUpdateChecker:
         temporary_path = None
         try:
             with requests.get(
-                url, stream=True, timeout=(10, 60)
+                    url, stream=True, timeout=(10, 60)
             ) as response:
                 response.raise_for_status()
                 with tempfile.NamedTemporaryFile(
-                    mode="wb",
-                    dir=destination.parent,
-                    prefix=f".{destination.name}.",
-                    suffix=".part",
-                    delete=False,
+                        mode="wb",
+                        dir=destination.parent,
+                        prefix=f".{destination.name}.",
+                        suffix=".part",
+                        delete=False,
                 ) as temporary_file:
                     temporary_path = Path(temporary_file.name)
                     for chunk in response.iter_content(chunk_size=8192):
@@ -356,7 +356,7 @@ class ModrinthUpdateChecker:
         return mods
 
     def check_for_updates(
-        self, mods: List[Dict], minecraft_version: Optional[str] = None
+            self, mods: List[Dict], minecraft_version: Optional[str] = None
     ) -> Dict[str, Dict]:
         """Check each mod for available updates on Modrinth."""
         results = {}
@@ -442,12 +442,12 @@ class ModrinthUpdateChecker:
             valid_files = [
                 file for file in files
                 if isinstance(file, dict)
-                and isinstance(file.get("filename"), str)
-                and file["filename"]
-                and Path(file["filename"]).name == file["filename"]
-                and "/" not in file["filename"]
-                and "\\" not in file["filename"]
-                and isinstance(file.get("url"), str)
+                   and isinstance(file.get("filename"), str)
+                   and file["filename"]
+                   and Path(file["filename"]).name == file["filename"]
+                   and "/" not in file["filename"]
+                   and "\\" not in file["filename"]
+                   and isinstance(file.get("url"), str)
             ] if isinstance(files, list) else []
             if valid_files:
                 download_file = next(
