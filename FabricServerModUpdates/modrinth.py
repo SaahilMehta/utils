@@ -3,7 +3,6 @@
 import json
 import os
 import re
-import sys
 import tempfile
 import time
 import zipfile
@@ -330,9 +329,9 @@ class ModrinthUpdateChecker:
         """Scan a directory for mod files and extract their IDs."""
         mods = []
         if not folder_path.exists():
-            print(f"[ERROR] Mods directory '{folder_path}' does not exist.")
-            print("[ERROR] Aborting scan because the target folder could not be found.")
-            sys.exit(1)
+            raise FileNotFoundError(
+                f"Mods directory '{folder_path}' does not exist."
+            )
 
         for file in folder_path.iterdir():
             if file.is_file() and file.suffix.lower() in [".jar", ".zip"]:

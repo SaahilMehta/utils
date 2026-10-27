@@ -157,7 +157,12 @@ def main():
             "No updates will be reported or downloaded; use --minecraft-version."
         )
 
-    mods = checker.scan_mods_folder(mods_folder)
+    try:
+        mods = checker.scan_mods_folder(mods_folder)
+    except FileNotFoundError as error:
+        print(f"[ERROR] {error}")
+        sys.exit(1)
+
     results = checker.check_for_updates(mods, minecraft_version)
     print_results(results, summary_only=args.summary)
     if args.download or args.install:
