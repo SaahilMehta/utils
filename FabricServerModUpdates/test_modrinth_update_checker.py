@@ -19,6 +19,23 @@ from update_operations import (
 
 
 class ScanModsFolderTests(TestCase):
+    def test_metadata_mod_id_takes_precedence_over_filename(self):
+        checker = ModrinthUpdateChecker()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            mods_folder = Path(temporary_directory)
+            mod_path = mods_folder / "filename-id-1.2.3.jar"
+            with zipfile.ZipFile(mod_path, "w") as archive:
+                archive.writestr(
+                    "fabric.mod.json",
+                    json.dumps(
+                        {"id": "metadata_id", "name": "Example", "version": "1.2.3"}
+                    ),
+                )
+
+            mods = checker.scan_mods_folder(mods_folder)
+
+        self.assertEqual(mods[0]["mod_id"], "metadata_id")
+
     def test_missing_directory_raises_file_not_found_error(self):
         checker = ModrinthUpdateChecker()
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -56,6 +73,38 @@ class ScanModsFolderTests(TestCase):
 
             self.assertEqual(error.exception.code, 1)
             self.assertIn("[ERROR] Mods directory", output.getvalue())
+
+
+class ExtractModIdTests(TestCase):
+    def test_extracts_hyphenated_id_before_version_and_loader_suffixes(self):
+        examples = {
+            "sodium-extra-fabric-0.5.8+mc1.20.1.jar": "sodium-extra",
+            "my_mod-neoforge-1.2.3-build-4.zip": "my_mod",
+            "fabric-api-0.92.2+1.20.1.jar": "fabric-api",
+            "examplemod-1.2.0-forge.jar": "examplemod",
+            "my-custom-mod-build-42.zip": "my-custom-mod",
+            "mod-mc1.20.1-fabric.jar": "mod",
+            "mod-quilt.jar": "mod",
+        }
+
+        for filename, expected_id in examples.items():
+            with self.subTest(filename=filename):
+                self.assertEqual(
+                    ModrinthUpdateChecker().extract_mod_id(filename),
+                    expected_id,
+                )
+
+    def test_preserves_hyphenated_ids_without_recognized_suffixes(self):
+        self.assertEqual(
+            ModrinthUpdateChecker().extract_mod_id("my-custom-mod.jar"),
+            "my-custom-mod",
+        )
+
+    def test_does_not_infer_id_when_filename_starts_with_a_version(self):
+        checker = ModrinthUpdateChecker()
+        for filename in ("1.2.3-example-mod.jar", "1-example-mod.jar"):
+            with self.subTest(filename=filename):
+                self.assertIsNone(checker.extract_mod_id(filename))
 
 
 class ResolveProjectIdTests(TestCase):
