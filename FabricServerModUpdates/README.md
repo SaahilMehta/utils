@@ -154,9 +154,12 @@ version from `fabric.mod.json`. If the metadata does not provide a mod ID, it
 tries the first part of the filename before a hyphen (for example,
 `examplemod-1.2.0.jar` gives the candidate ID `examplemod`). It then resolves
 that candidate to a Modrinth mod project, using the metadata name as a search
-hint where available. One project ID override is currently configured for
-`treeharvester`. Modrinth versions are filtered by both the target Minecraft
-version and the Fabric loader.
+hint where available. Search matches must be exact after normalizing case and
+punctuation; if multiple projects match, the ID is left unresolved rather than
+guessing. Direct lookups are accepted only when Modrinth confirms the project
+is a mod. One project ID override is currently configured for `treeharvester`.
+Modrinth versions are filtered by both the target Minecraft version and the
+Fabric loader.
 
 The installed version must be present in `fabric.mod.json` for the checker to
 compare versions. Project lookup requires a matching Modrinth mod project, and

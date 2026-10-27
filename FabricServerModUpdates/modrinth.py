@@ -132,13 +132,24 @@ class ModrinthUpdateChecker:
         """Search for a Modrinth project by name/ID and return its actual project ID."""
         # Try direct lookup first (faster if ID is already valid)
         data, status = self._request(f"/project/{candidate_id}")
-        if status == 200 and isinstance(data, dict):
-            return data.get("id")
+        if (
+            status == 200
+            and isinstance(data, dict)
+            and data.get("project_type") == "mod"
+            and isinstance(data.get("id"), str)
+            and data["id"].strip()
+        ):
+            return data["id"]
 
         if status != 200:
             print(
                 f"[WARN] Direct lookup for candidate ID '{candidate_id}' failed with status {status}; "
                 f"falling back to search."
+            )
+        else:
+            print(
+                f"[WARN] Direct lookup for candidate ID '{candidate_id}' did not return "
+                "a valid Modrinth mod project; falling back to search."
             )
 
         # Fall back to search API
@@ -151,7 +162,11 @@ class ModrinthUpdateChecker:
                 "limit": 10,
             },
         )
-        if status >= 400 or not isinstance(results, dict) or "hits" not in results:
+        if (
+            status >= 400
+            or not isinstance(results, dict)
+            or not isinstance(results.get("hits"), list)
+        ):
             print(
                 f"[WARN] Could not resolve project ID for '{candidate_id}' via search API. "
                 f"Query='{search_query}', status={status}."
@@ -163,6 +178,7 @@ class ModrinthUpdateChecker:
             if isinstance(hit, dict)
                and hit.get("project_type") == "mod"
                and isinstance(hit.get("project_id"), str)
+               and hit["project_id"].strip()
         ]
 
         def normalize(value: str) -> str:
@@ -170,25 +186,44 @@ class ModrinthUpdateChecker:
                 character for character in value.casefold() if character.isalnum()
             )
 
-        expected_names = {normalize(candidate_id)}
-        if candidate_name:
-            expected_names.add(normalize(candidate_name))
-        exact_hit = next(
-            (
-                hit for hit in hits
-                if normalize(hit.get("slug", "")) in expected_names
-                   or normalize(hit.get("title", "")) in expected_names
-            ),
-            None,
-        )
-        if not exact_hit:
+        expected_id = normalize(candidate_id)
+        expected_name = normalize(candidate_name) if candidate_name else ""
+        matching_project_ids = {
+            hit["project_id"]
+            for hit in hits
+            if (
+                isinstance(hit.get("slug"), str)
+                and normalize(hit["slug"]) == expected_id
+            )
+            or (
+                expected_name
+                and (
+                    (
+                        isinstance(hit.get("title"), str)
+                        and normalize(hit["title"]) == expected_name
+                    )
+                    or (
+                        isinstance(hit.get("slug"), str)
+                        and normalize(hit["slug"]) == expected_name
+                    )
+                )
+            )
+        }
+        if not matching_project_ids:
             print(
                 f"[WARN] No Modrinth project match found for '{candidate_id}' "
-                f"(name='{candidate_name}', expected={sorted(expected_names)})"
+                f"(name='{candidate_name}')."
             )
             return None
 
-        return exact_hit.get("project_id")
+        if len(matching_project_ids) > 1:
+            print(
+                f"[WARN] Multiple Modrinth projects match '{candidate_id}' "
+                f"(name='{candidate_name}'); refusing to guess."
+            )
+            return None
+
+        return next(iter(matching_project_ids))
 
     def get_mod_info(self, project_id: str) -> Optional[Dict]:
         """Fetch mod/project info from Modrinth API."""
