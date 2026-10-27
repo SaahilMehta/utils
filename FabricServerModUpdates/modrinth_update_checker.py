@@ -173,37 +173,38 @@ def main():
         download_dir = args.download_dir or (
             mods_folder.resolve().parent / f"{mods_folder.name}_updates"
         )
+
         if not has_updates:
-            download_updates(checker, results, download_dir)
-        elif args.yes or confirm_action("download available updates"):
+            print("[INFO] No available updates to download or install.")
+            return
+
+        if args.yes or confirm_action("download available updates"):
             download_updates(checker, results, download_dir)
         else:
             return
 
-        if args.install:
-            if (
-                has_updates
-                and not args.yes
-                and not confirm_action("install downloaded updates")
-            ):
-                return
-            if not minecraft_version:
-                print(
-                    "[ERROR] A Minecraft version is required to validate "
-                    "updates before installation."
-                )
-                sys.exit(1)
-            try:
-                install_downloaded_updates(
-                    checker,
-                    mods_folder,
-                    download_dir,
-                    results,
-                    minecraft_version,
-                )
-            except (OSError, RuntimeError, ValueError) as error:
-                print(f"[ERROR] {error}")
-                sys.exit(1)
+        if not args.install:
+            return
+
+        if not args.yes and not confirm_action("install downloaded updates"):
+            return
+        if not minecraft_version:
+            print(
+                "[ERROR] A Minecraft version is required to validate "
+                "updates before installation."
+            )
+            sys.exit(1)
+        try:
+            install_downloaded_updates(
+                checker,
+                mods_folder,
+                download_dir,
+                results,
+                minecraft_version,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"[ERROR] {error}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
