@@ -157,11 +157,12 @@ def install_downloaded_updates(
         minecraft_version: str,
 ) -> None:
     """Back up replaced mods, then move downloaded updates into the mods folder."""
-    updates = [
-        (filename, data)
-        for filename, data in results.items()
-        if data.get("status") == "update_available"
-    ]
+    updates = []
+    for filename, data in results.items():
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid update information for '{filename}'.")
+        if data.get("status") == "update_available":
+            updates.append((filename, data))
     if not updates:
         print("[INFO] No available updates to install.")
         return
