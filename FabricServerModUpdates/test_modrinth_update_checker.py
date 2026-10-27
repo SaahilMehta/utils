@@ -246,10 +246,10 @@ class MinecraftServerProcessTests(TestCase):
 
 
 class UpdateApprovalTests(TestCase):
-    def run_cli(self, options, responses=()):
+    def run_cli(self, options, responses=(), results=None):
         checker = Mock()
         checker.scan_mods_folder.return_value = []
-        checker.check_for_updates.return_value = {
+        checker.check_for_updates.return_value = results or {
             "example-1.0.jar": {
                 "status": "update_available",
                 "current": "1.0",
@@ -306,6 +306,16 @@ class UpdateApprovalTests(TestCase):
         installs.assert_not_called()
         prompt.assert_called_once()
         self.assertIn("download", prompt.call_args.args[0])
+
+    def test_download_and_install_are_not_attempted_when_no_updates_exist(self):
+        downloads, installs, prompt = self.run_cli(
+            ["--download", "--install"],
+            results={"example-1.0.jar": {"status": "up-to-date", "current": "1.0"}},
+        )
+
+        downloads.assert_not_called()
+        installs.assert_not_called()
+        prompt.assert_not_called()
 
     def test_empty_response_reprompts_until_user_answers(self):
         downloads, _, prompt = self.run_cli(["--download"], ["", "y"])
