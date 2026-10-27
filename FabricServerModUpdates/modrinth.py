@@ -343,20 +343,50 @@ class ModrinthUpdateChecker:
 
     def extract_mod_id(self, filename: str) -> Optional[str]:
         """Extract Modrinth mod ID from a jar/zip filename."""
-        base = Path(filename).stem  # removes .jar or similar extension
-        parts = base.split("-")
-
-        if len(parts) < 2:
-            print(f"[WARN] Could not infer Modrinth project ID from filename '{filename}': too few '-' segments.")
+        base = Path(filename).stem
+        if re.match(
+            r"(?:minecraft|mc|v)?\d+(?:[._]\d+)*(?=$|[-+_])",
+            base,
+            re.IGNORECASE,
+        ):
+            print(
+                f"[WARN] Could not infer a Modrinth project ID from filename "
+                f"'{filename}': it starts with a version-like segment."
+            )
             return None
 
-        candidate_id = parts[0].lower()
-        # Validate against Modrinth ID rules (alphanumeric, hyphens/underscores allowed)
-        if all(c.isalnum() or c in "-_" for c in candidate_id):
+        version_match = re.search(
+            r"[-_](?:minecraft|mc|v)?\d+(?:[._]\d+)*(?=$|[-+_])",
+            base,
+            re.IGNORECASE,
+        )
+        build_match = re.search(
+            r"[-_](?:build|revision|rev)[-_]?\d+(?=$|[-+_])",
+            base,
+            re.IGNORECASE,
+        )
+        suffix_starts = [
+            match.start() for match in (version_match, build_match) if match
+        ]
+        if suffix_starts:
+            base = base[: min(suffix_starts)]
+
+        base = re.sub(
+            r"(?:[-_](?:fabric|forge|neoforge|neo|quilt|client|server|universal))+$",
+            "",
+            base,
+            flags=re.IGNORECASE,
+        )
+        candidate_id = base.strip("-_").casefold()
+        if candidate_id and all(
+            character.isalnum() or character in "-_"
+            for character in candidate_id
+        ):
             return candidate_id
 
         print(
-            f"[WARN] Candidate Modrinth project ID extracted from '{filename}' is invalid: '{candidate_id}'."
+            f"[WARN] Could not infer a valid Modrinth project ID from filename "
+            f"'{filename}': '{candidate_id}'."
         )
         return None
 
