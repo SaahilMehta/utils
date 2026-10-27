@@ -25,7 +25,8 @@ def print_results(results: Dict[str, Dict], summary_only: bool = False):
         return
 
     updates = []
-    outdated = []
+    no_versions = []
+    unknown = []
     ok = []
 
     for filename, data in results.items():
@@ -34,8 +35,10 @@ def print_results(results: Dict[str, Dict], summary_only: bool = False):
             updates.append((filename, data))
         elif status == "up-to-date":
             ok.append((filename, data))
+        elif status == "no_versions":
+            no_versions.append((filename, data))
         else:
-            outdated.append((filename, data))
+            unknown.append((filename, data))
 
     print("\n" + "=" * 60)
     print("MODRINTH UPDATE CHECKER RESULTS")
@@ -47,9 +50,18 @@ def print_results(results: Dict[str, Dict], summary_only: bool = False):
             print(f"  - {filename}")
             print(f"      Current: {data.get('current', 'N/A')} → Latest: {data.get('latest', 'N/A')}")
 
-    if outdated:
-        print(f"\n[WARNINGS] {len(outdated)} mod(s) with issues:\n")
-        for filename, data in outdated:
+    if no_versions:
+        print(
+            f"\n[NO VERSIONS] {len(no_versions)} mod(s) have no compatible "
+            "Fabric versions:\n"
+        )
+        for filename, data in no_versions:
+            print(f"  - {filename}")
+            print(f"      Details: {data.get('details', 'N/A')}")
+
+    if unknown:
+        print(f"\n[WARNINGS] {len(unknown)} mod(s) with unknown status or issues:\n")
+        for filename, data in unknown:
             print(f"  - {filename}")
             print(f"      Details: {data.get('details', 'N/A')}")
 
@@ -60,7 +72,8 @@ def print_results(results: Dict[str, Dict], summary_only: bool = False):
         print("\n--- SUMMARY ---")
         print(f"  Updates available: {len(updates)}")
         print(f"  Up-to-date:       {len(ok)}")
-        print(f"  Issues/Unknown:   {len(outdated)}")
+        print(f"  No compatible versions: {len(no_versions)}")
+        print(f"  Unknown/Issues:        {len(unknown)}")
 
 
 def confirm_action(action: str) -> bool:

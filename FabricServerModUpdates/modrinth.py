@@ -403,6 +403,14 @@ class ModrinthUpdateChecker:
         results = {}
         for mod in mods:
             if not mod["mod_id"]:
+                results[mod["filename"]] = {
+                    "status": "unknown",
+                    "current": mod.get("current_version"),
+                    "details": (
+                        "Could not determine a Modrinth project ID from "
+                        "mod metadata or filename"
+                    ),
+                }
                 continue
 
             if not minecraft_version:

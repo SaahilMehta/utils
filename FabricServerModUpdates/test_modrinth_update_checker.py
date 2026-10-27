@@ -454,6 +454,77 @@ class GetLatestVersionTests(TestCase):
         self.assertIsNone(checker.get_latest_version("fabric-api", "1.20.1"))
 
 
+class CheckUpdateStatusTests(TestCase):
+    def test_check_statuses_distinguish_unknown_no_versions_and_updates(self):
+        checker = ModrinthUpdateChecker()
+        checker.resolve_project_id = Mock(
+            side_effect=[None, "project", "project", "project"]
+        )
+        checker.get_mod_info = Mock(return_value={"id": "project"})
+        checker.get_latest_version = Mock(
+            side_effect=[
+                {"version_number": "2.0"},
+                None,
+                {"version_number": "2.0"},
+            ]
+        )
+
+        results = checker.check_for_updates(
+            [
+                {"filename": "unidentified.jar", "mod_id": None},
+                {"filename": "unresolved.jar", "mod_id": "unresolved"},
+                {"filename": "missing-version.jar", "mod_id": "missing-version"},
+                {
+                    "filename": "no-compatible-version.jar",
+                    "mod_id": "no-compatible-version",
+                    "current_version": "1.0",
+                },
+                {
+                    "filename": "update.jar",
+                    "mod_id": "update",
+                    "current_version": "1.0",
+                },
+            ],
+            "1.21.4",
+        )
+
+        self.assertEqual(
+            {filename: result["status"] for filename, result in results.items()},
+            {
+                "unidentified.jar": "unknown",
+                "unresolved.jar": "unknown",
+                "missing-version.jar": "unknown",
+                "no-compatible-version.jar": "no_versions",
+                "update.jar": "update_available",
+            },
+        )
+
+
+class PrintResultsTests(TestCase):
+    def test_summary_reports_unknown_no_versions_and_update_states_separately(self):
+        output = StringIO()
+        results = {
+            "update.jar": {"status": "update_available"},
+            "current.jar": {"status": "up-to-date"},
+            "unsupported.jar": {
+                "status": "no_versions",
+                "details": "No compatible release",
+            },
+            "unresolved.jar": {"status": "unknown", "details": "Not resolved"},
+        }
+
+        with redirect_stdout(output):
+            modrinth_update_checker.print_results(results, summary_only=True)
+
+        report = output.getvalue()
+        self.assertIn("[UPDATES] 1 mod(s)", report)
+        self.assertIn("[OK] 1 mod(s)", report)
+        self.assertIn("[NO VERSIONS] 1 mod(s)", report)
+        self.assertIn("[WARNINGS] 1 mod(s)", report)
+        self.assertIn("No compatible versions: 1", report)
+        self.assertIn("Unknown/Issues:        1", report)
+
+
 class InstalledVersionComparisonTests(TestCase):
     def test_ignores_minecraft_and_loader_labels_in_release_version(self):
         matching_versions = (
