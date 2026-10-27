@@ -1,7 +1,8 @@
 import json
 import tempfile
 import zipfile
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -15,6 +16,46 @@ from update_operations import (
     _is_minecraft_server_command,
     install_downloaded_updates,
 )
+
+
+class ScanModsFolderTests(TestCase):
+    def test_missing_directory_raises_file_not_found_error(self):
+        checker = ModrinthUpdateChecker()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            missing_folder = Path(temporary_directory) / "missing-mods"
+
+            with self.assertRaisesRegex(
+                FileNotFoundError,
+                "Mods directory .* does not exist",
+            ):
+                checker.scan_mods_folder(missing_folder)
+
+    def test_cli_reports_missing_directory_and_exits_with_error(self):
+        checker = Mock()
+        checker.scan_mods_folder.side_effect = FileNotFoundError(
+            "Mods directory 'missing-mods' does not exist."
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch(
+                        "modrinth_update_checker.ModrinthUpdateChecker",
+                        return_value=checker,
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "sys.argv",
+                        ["modrinth_update_checker.py", temporary_directory],
+                    )
+                )
+                output = stack.enter_context(redirect_stdout(StringIO()))
+
+                with self.assertRaises(SystemExit) as error:
+                    modrinth_update_checker.main()
+
+            self.assertEqual(error.exception.code, 1)
+            self.assertIn("[ERROR] Mods directory", output.getvalue())
 
 
 class GetLatestVersionTests(TestCase):

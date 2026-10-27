@@ -20,6 +20,8 @@ provide; it does not search subfolders.
 - `modrinth_update_checker.py` provides the command-line interface, workflow,
   and results report.
 - `modrinth.py` handles Modrinth API requests, mod scanning, and version checks.
+  Its scanner raises `FileNotFoundError` when the mods folder is missing; the
+  command-line interface reports the error and exits with a failure status.
 - `update_operations.py` handles server-process checks, downloads, and safe
   installation with backups.
 
