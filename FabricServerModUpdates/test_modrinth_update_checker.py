@@ -300,6 +300,77 @@ class GetLatestVersionTests(TestCase):
 
         self.assertIsNone(checker.get_latest_version("fabric-api", "1.20.1"))
 
+    def test_ignores_malformed_dates_when_valid_dates_are_available(self):
+        releases = [
+            {
+                "version_number": "valid-older",
+                "date_published": "2025-01-01T00:00:00Z",
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+            {
+                "version_number": "malformed-date",
+                "date_published": [],
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+            {
+                "version_number": "valid-newer",
+                "date_published": "2025-01-01T00:30:00-01:00",
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+        ]
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(return_value=(releases, 200))
+
+        selected = checker.get_latest_version("fabric-api", "1.20.1")
+
+        self.assertEqual(selected["version_number"], "valid-newer")
+
+    def test_uses_first_usable_api_result_when_dates_are_missing_or_invalid(self):
+        releases = [
+            {
+                "version_number": "first-release",
+                "date_published": "not-a-date",
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+            {
+                "version_number": "missing-date",
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+            {
+                "date_published": "2026-10-01T00:00:00Z",
+                "game_versions": ["1.20.1"],
+                "loaders": ["fabric"],
+            },
+        ]
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(return_value=(releases, 200))
+
+        selected = checker.get_latest_version("fabric-api", "1.20.1")
+
+        self.assertEqual(selected["version_number"], "first-release")
+
+    def test_returns_none_when_compatible_releases_lack_version_numbers(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            return_value=(
+                [
+                    {
+                        "date_published": "2026-10-01T00:00:00Z",
+                        "game_versions": ["1.20.1"],
+                        "loaders": ["fabric"],
+                    }
+                ],
+                200,
+            )
+        )
+
+        self.assertIsNone(checker.get_latest_version("fabric-api", "1.20.1"))
+
 
 class InstalledVersionComparisonTests(TestCase):
     def test_ignores_minecraft_and_loader_labels_in_release_version(self):

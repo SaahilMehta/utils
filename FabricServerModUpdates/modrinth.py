@@ -6,6 +6,7 @@ import re
 import tempfile
 import time
 import zipfile
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -268,6 +269,8 @@ class ModrinthUpdateChecker:
             version
             for version in versions
             if isinstance(version, dict)
+               and isinstance(version.get("version_number"), str)
+               and version["version_number"].strip()
                and isinstance(version.get("game_versions"), list)
                and minecraft_version in version["game_versions"]
                and isinstance(version.get("loaders"), list)
@@ -280,10 +283,32 @@ class ModrinthUpdateChecker:
             )
             return None
 
-        latest = max(
-            compatible_versions,
-            key=lambda version: version.get("date_published", ""),
-        )
+        dated_versions = []
+        for version in compatible_versions:
+            date_published = version.get("date_published")
+            if not isinstance(date_published, str) or not date_published.strip():
+                continue
+            try:
+                published_at = datetime.fromisoformat(
+                    date_published.strip().replace("Z", "+00:00")
+                )
+                if published_at.tzinfo is None:
+                    published_at = published_at.replace(tzinfo=timezone.utc)
+                else:
+                    published_at = published_at.astimezone(timezone.utc)
+            except (OverflowError, ValueError):
+                continue
+            dated_versions.append((published_at, version))
+
+        if dated_versions:
+            latest = max(dated_versions, key=lambda item: item[0])[1]
+        else:
+            print(
+                f"[WARN] No valid publication dates found for Fabric versions of "
+                f"'{project_id}'; using the first compatible API result."
+            )
+            latest = compatible_versions[0]
+
         self._cache.setdefault(project_id, {})[cache_key] = latest
         return latest
 
