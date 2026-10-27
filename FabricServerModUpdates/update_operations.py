@@ -7,11 +7,11 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import requests
 
-from modrinth import ModrinthUpdateChecker, _versions_match
+from mod_archive import is_safe_filename, read_fabric_metadata, versions_match
 
 
 def _is_minecraft_server_command(
@@ -99,7 +99,7 @@ def is_minecraft_server_running(server_dir: Optional[Path] = None) -> bool:
 
 
 def download_updates(
-        checker: ModrinthUpdateChecker,
+        download_file: Callable[[str, Path], None],
         results: Dict[str, Dict],
         download_dir: Path,
 ) -> None:
@@ -123,11 +123,7 @@ def download_updates(
         download_filename = data.get("download_filename")
         download_url = data.get("download_url")
         if (
-                not isinstance(download_filename, str)
-                or not download_filename
-                or Path(download_filename).name != download_filename
-                or "/" in download_filename
-                or "\\" in download_filename
+                not is_safe_filename(download_filename)
                 or not isinstance(download_url, str)
         ):
             print(
@@ -143,14 +139,13 @@ def download_updates(
             continue
 
         try:
-            checker.download_file(download_url, destination)
+            download_file(download_url, destination)
             print(f"[DOWNLOADED] {installed_filename} -> {destination}")
         except (requests.exceptions.RequestException, OSError, ValueError) as error:
             print(f"[ERROR] Could not download update for '{installed_filename}': {error}")
 
 
 def install_downloaded_updates(
-        checker: ModrinthUpdateChecker,
         mods_folder: Path,
         download_dir: Path,
         results: Dict[str, Dict],
@@ -194,16 +189,8 @@ def install_downloaded_updates(
         download_filename = data.get("download_filename")
         latest_version = data.get("latest")
         if (
-                not isinstance(installed_filename, str)
-                or not installed_filename
-                or Path(installed_filename).name != installed_filename
-                or "/" in installed_filename
-                or "\\" in installed_filename
-                or not isinstance(download_filename, str)
-                or not download_filename
-                or Path(download_filename).name != download_filename
-                or "/" in download_filename
-                or "\\" in download_filename
+                not is_safe_filename(installed_filename)
+                or not is_safe_filename(download_filename)
                 or not isinstance(latest_version, str)
                 or not latest_version
         ):
@@ -227,8 +214,8 @@ def install_downloaded_updates(
                 f"Downloaded update '{download_path}' is missing; no mods were installed."
             )
 
-        downloaded_version = checker._read_fabric_metadata(download_path).get("version")
-        if not downloaded_version or not _versions_match(
+        downloaded_version = read_fabric_metadata(download_path).get("version")
+        if not downloaded_version or not versions_match(
                 downloaded_version, latest_version, minecraft_version
         ):
             raise ValueError(
