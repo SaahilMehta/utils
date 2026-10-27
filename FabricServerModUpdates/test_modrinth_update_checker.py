@@ -58,6 +58,120 @@ class ScanModsFolderTests(TestCase):
             self.assertIn("[ERROR] Mods directory", output.getvalue())
 
 
+class ResolveProjectIdTests(TestCase):
+    def test_accepts_direct_lookup_only_for_a_valid_mod_project(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            return_value=(
+                {"id": "actual-project-id", "project_type": "mod"},
+                200,
+            )
+        )
+
+        self.assertEqual(
+            checker.resolve_project_id("project-slug"),
+            "actual-project-id",
+        )
+        checker._request.assert_called_once_with("/project/project-slug")
+
+    def test_rejects_successful_direct_lookup_for_non_mod_project(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            side_effect=[
+                ({"id": "resource", "project_type": "resourcepack"}, 200),
+                ({"hits": []}, 200),
+            ]
+        )
+
+        self.assertIsNone(checker.resolve_project_id("resource"))
+
+    def test_does_not_match_a_similar_but_different_project_name(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            side_effect=[
+                ({}, 404),
+                (
+                    {
+                        "hits": [
+                            {
+                                "project_id": "different-project",
+                                "project_type": "mod",
+                                "slug": "widget-pro",
+                                "title": "Widget Pro",
+                            }
+                        ]
+                    },
+                    200,
+                ),
+            ]
+        )
+
+        self.assertIsNone(checker.resolve_project_id("widget", "Widget"))
+
+    def test_returns_unknown_for_multiple_exact_name_matches(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            side_effect=[
+                ({}, 404),
+                (
+                    {
+                        "hits": [
+                            {
+                                "project_id": "first-project",
+                                "project_type": "mod",
+                                "slug": "example-mod",
+                                "title": "Example Mod",
+                            },
+                            {
+                                "project_id": "second-project",
+                                "project_type": "mod",
+                                "slug": "example-mod-fork",
+                                "title": "Example Mod",
+                            },
+                        ]
+                    },
+                    200,
+                ),
+            ]
+        )
+
+        self.assertIsNone(
+            checker.resolve_project_id("fabric_example", "Example Mod")
+        )
+
+    def test_resolves_a_unique_exact_name_match(self):
+        checker = ModrinthUpdateChecker()
+        checker._request = Mock(
+            side_effect=[
+                ({}, 404),
+                (
+                    {
+                        "hits": [
+                            {
+                                "project_id": "similar-project",
+                                "project_type": "mod",
+                                "slug": "example-mod-plus",
+                                "title": "Example Mod Plus",
+                            },
+                            {
+                                "project_id": "exact-project",
+                                "project_type": "mod",
+                                "slug": "example-mod",
+                                "title": "Example Mod",
+                            },
+                        ]
+                    },
+                    200,
+                ),
+            ]
+        )
+
+        self.assertEqual(
+            checker.resolve_project_id("fabric_example", "Example Mod"),
+            "exact-project",
+        )
+
+
 class GetLatestVersionTests(TestCase):
     def test_selects_latest_fabric_release_for_requested_minecraft_version(self):
         releases = [
