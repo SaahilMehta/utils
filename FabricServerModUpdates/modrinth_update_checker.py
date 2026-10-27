@@ -179,7 +179,7 @@ def main():
             return
 
         if args.yes or confirm_action("download available updates"):
-            download_updates(checker, results, download_dir)
+            download_updates(checker.download_file, results, download_dir)
         else:
             return
 
@@ -196,7 +196,6 @@ def main():
             sys.exit(1)
         try:
             install_downloaded_updates(
-                checker,
                 mods_folder,
                 download_dir,
                 results,

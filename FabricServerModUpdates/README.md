@@ -22,8 +22,10 @@ provide; it does not search subfolders.
 - `modrinth.py` handles Modrinth API requests, mod scanning, and version checks.
   Its scanner raises `FileNotFoundError` when the mods folder is missing; the
   command-line interface reports the error and exits with a failure status.
+- `mod_archive.py` centralizes Fabric metadata parsing, version comparison, and
+  safe filename validation shared by checking and installation.
 - `update_operations.py` handles server-process checks, downloads, and safe
-  installation with backups.
+  installation with backups, without depending on Modrinth client internals.
 
 ## Install
 

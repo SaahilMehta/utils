@@ -14,40 +14,15 @@ from urllib.parse import urlparse
 
 import requests
 
+from mod_archive import (
+    is_safe_filename,
+    read_fabric_metadata,
+    versions_match,
+)
+
 MODRINTH_PROJECT_ID_OVERRIDES = {
     "treeharvester": "abooMhox",
 }
-
-MODRINTH_LOADER_LABELS = {"fabric", "forge", "neoforge", "neo", "quilt"}
-
-
-def _versions_match(
-        installed_version: str, published_version: str, minecraft_version: str
-) -> bool:
-    """Compare mod versions while ignoring Minecraft and loader labels."""
-    if installed_version.casefold() == published_version.casefold():
-        return True
-
-    minecraft_version = minecraft_version.casefold()
-    minecraft_labels = {
-        minecraft_version,
-        f"mc{minecraft_version}",
-        f"{minecraft_version}.0",
-        f"mc{minecraft_version}.0",
-    }
-
-    def version_components(version: str) -> tuple[str, ...]:
-        return tuple(
-            component
-            for component in re.split(r"[-+]", version.casefold())
-            if component
-            and component not in MODRINTH_LOADER_LABELS
-            and component not in minecraft_labels
-        )
-
-    installed_components = version_components(installed_version)
-    published_components = version_components(published_version)
-    return bool(installed_components) and installed_components == published_components
 
 
 def detect_minecraft_version(server_dir: Path) -> Optional[str]:
@@ -343,29 +318,6 @@ class ModrinthUpdateChecker:
             if temporary_path and temporary_path.exists():
                 temporary_path.unlink()
 
-    def _read_fabric_metadata(self, file_path: Path) -> Dict[str, Optional[str]]:
-        """Read the Fabric mod ID and installed version from a mod archive."""
-        try:
-            with zipfile.ZipFile(file_path) as archive:
-                metadata = json.loads(archive.read("fabric.mod.json"))
-        except KeyError:
-            return {}
-        except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as error:
-            print(f"[WARN] Could not read Fabric metadata from '{file_path.name}': {error}")
-            return {}
-
-        if not isinstance(metadata, dict):
-            return {}
-
-        mod_id = metadata.get("id")
-        name = metadata.get("name")
-        version = metadata.get("version")
-        return {
-            "mod_id": mod_id if isinstance(mod_id, str) and mod_id else None,
-            "name": name if isinstance(name, str) and name else None,
-            "version": version if isinstance(version, str) and version else None,
-        }
-
     def extract_mod_id(self, filename: str) -> Optional[str]:
         """Extract Modrinth mod ID from a jar/zip filename."""
         base = Path(filename).stem
@@ -425,7 +377,7 @@ class ModrinthUpdateChecker:
 
         for file in folder_path.iterdir():
             if file.is_file() and file.suffix.lower() in [".jar", ".zip"]:
-                metadata = self._read_fabric_metadata(file)
+                metadata = read_fabric_metadata(file)
                 mod_id = metadata.get("mod_id") or self.extract_mod_id(file.name)
                 if not mod_id:
                     print(
@@ -516,7 +468,7 @@ class ModrinthUpdateChecker:
 
             status = (
                 "up-to-date"
-                if _versions_match(current_version, latest_version, minecraft_version)
+                if versions_match(current_version, latest_version, minecraft_version)
                 else "update_available"
             )
 
@@ -531,11 +483,7 @@ class ModrinthUpdateChecker:
             valid_files = [
                 file for file in files
                 if isinstance(file, dict)
-                   and isinstance(file.get("filename"), str)
-                   and file["filename"]
-                   and Path(file["filename"]).name == file["filename"]
-                   and "/" not in file["filename"]
-                   and "\\" not in file["filename"]
+                   and is_safe_filename(file.get("filename"))
                    and isinstance(file.get("url"), str)
             ] if isinstance(files, list) else []
             if valid_files:

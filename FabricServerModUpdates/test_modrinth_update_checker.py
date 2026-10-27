@@ -12,10 +12,92 @@ from modrinth import (
     ModrinthUpdateChecker,
     detect_minecraft_version,
 )
+from mod_archive import is_safe_filename
 from update_operations import (
     _is_minecraft_server_command,
+    download_updates,
     install_downloaded_updates,
 )
+
+
+class SharedArchiveValidationTests(TestCase):
+    def test_safe_filename_validation_accepts_only_single_filenames(self):
+        for filename in ("example-2.0.jar", "archive.zip"):
+            with self.subTest(filename=filename):
+                self.assertTrue(is_safe_filename(filename))
+
+        for filename in ("", None, "../example.jar", "folder\\example.jar"):
+            with self.subTest(filename=filename):
+                self.assertFalse(is_safe_filename(filename))
+
+    def test_update_check_ignores_unsafe_release_filenames(self):
+        checker = ModrinthUpdateChecker()
+        checker.resolve_project_id = Mock(return_value="project")
+        checker.get_mod_info = Mock(return_value={"id": "project"})
+        checker.get_latest_version = Mock(
+            return_value={
+                "version_number": "2.0",
+                "files": [
+                    {"filename": "../unsafe.jar", "url": "https://cdn.modrinth.com/unsafe"},
+                    {"filename": "safe.jar", "url": "https://cdn.modrinth.com/safe"},
+                ],
+            }
+        )
+
+        result = checker.check_for_updates(
+            [
+                {
+                    "filename": "example-1.0.jar",
+                    "mod_id": "example",
+                    "current_version": "1.0",
+                }
+            ],
+            "1.21.4",
+        )
+
+        self.assertEqual(result["example-1.0.jar"]["download_filename"], "safe.jar")
+
+
+class DownloadUpdatesTests(TestCase):
+    def test_uses_injected_downloader_for_valid_update(self):
+        downloader = Mock()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            download_dir = Path(temporary_directory) / "updates"
+            with redirect_stdout(StringIO()):
+                download_updates(
+                    downloader,
+                    {
+                        "example-1.0.jar": {
+                            "status": "update_available",
+                            "download_filename": "example-2.0.jar",
+                            "download_url": "https://cdn.modrinth.com/example",
+                        }
+                    },
+                    download_dir,
+                )
+
+        downloader.assert_called_once_with(
+            "https://cdn.modrinth.com/example",
+            download_dir / "example-2.0.jar",
+        )
+
+    def test_does_not_download_unsafe_filename(self):
+        downloader = Mock()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with redirect_stdout(StringIO()):
+                download_updates(
+                    downloader,
+                    {
+                        "example-1.0.jar": {
+                            "status": "update_available",
+                            "download_filename": "../unsafe.jar",
+                            "download_url": "https://cdn.modrinth.com/unsafe",
+                        }
+                    },
+                    Path(temporary_directory),
+                )
+
+        downloader.assert_not_called()
 
 
 class ScanModsFolderTests(TestCase):
@@ -609,7 +691,6 @@ class InstallDownloadedUpdatesTests(TestCase):
                     return_value=False,
             ):
                 install_downloaded_updates(
-                    ModrinthUpdateChecker(),
                     mods_folder,
                     download_dir,
                     {
@@ -653,7 +734,6 @@ class InstallDownloadedUpdatesTests(TestCase):
             ) as process_check:
                 with self.assertRaisesRegex(RuntimeError, "server appears to be running"):
                     install_downloaded_updates(
-                        ModrinthUpdateChecker(),
                         mods_folder,
                         download_dir,
                         {
@@ -690,7 +770,6 @@ class InstallDownloadedUpdatesTests(TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "does not match the expected"):
                     install_downloaded_updates(
-                        ModrinthUpdateChecker(),
                         mods_folder,
                         download_dir,
                         {
@@ -728,7 +807,6 @@ class InstallDownloadedUpdatesTests(TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "same download filename"):
                     install_downloaded_updates(
-                        ModrinthUpdateChecker(),
                         mods_folder,
                         download_dir,
                         {
@@ -770,7 +848,6 @@ class InstallDownloadedUpdatesTests(TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "Downloaded update .* is missing"):
                     install_downloaded_updates(
-                        ModrinthUpdateChecker(),
                         mods_folder,
                         download_dir,
                         {
@@ -800,7 +877,6 @@ class InstallDownloadedUpdatesTests(TestCase):
             ):
                 with self.assertRaisesRegex(ValueError, "Invalid update information"):
                     install_downloaded_updates(
-                        ModrinthUpdateChecker(),
                         mods_folder,
                         download_dir,
                         {"example-1.0.jar": None},
